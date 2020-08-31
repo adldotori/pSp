@@ -2,6 +2,7 @@ import argparse
 import math
 import random
 import os
+import os.path as osp
 
 import numpy as np
 import torch
@@ -21,7 +22,7 @@ except ImportError:
 from model import Generator, Discriminator
 from dataset import MultiResolutionDataset
 from distributed import (
-    get_rank,
+    get_rank, 
     synchronize,
     reduce_loss_dict,
     reduce_sum,
@@ -40,6 +41,39 @@ def data_sampler(dataset, shuffle, distributed):
     else:
         return data.SequentialSampler(dataset)
 
+def get_data_from_loader(loaders, index0, index1, data_type):
+    if data_type[0] == 0:
+        men_person_img, men_face_img, men_face_seg = next(loaders[index0])
+
+        men_cond = torch.cat([men_face_img, men_face_seg], dim=1)
+
+    elif data_type[0] == 1:
+        men_person_img, men_person_seg, men_face_img, men_face_seg = next(loaders[index0])
+
+        men_person_img = torch.cat([men_person_img, men_person_seg], dim=1)
+        men_cond = torch.cat([men_face_img, men_face_seg], dim=1)
+
+    else:
+        raise ValueError('No such data type')
+
+    if data_type[1] == 0:
+        women_person_img, women_face_img, women_face_seg = next(loaders[index1])
+
+        women_cond = torch.cat([women_face_img, women_face_seg], dim=1)
+
+    elif data_type[1] == 1:
+        women_person_img, women_person_seg, women_face_img, women_face_seg = next(loaders[index1])
+
+        women_person_img = torch.cat([women_person_img, women_person_seg], dim=1)
+        women_cond = torch.cat([women_face_img, women_face_seg], dim=1)
+        
+    else:
+        raise ValueError('No such data type')
+
+    person_img = torch.cat([men_person_img, women_person_img], dim=0)
+    cond = torch.cat([men_cond, women_cond], dim=0)
+    
+    return person_img, cond
 
 def requires_grad(model, flag=True):
     for p in model.parameters():
@@ -123,6 +157,7 @@ def set_grad_none(model, targets):
 
 def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device):
     loader = sample_data(loader)
+    print(type(loader))
 
     pbar = range(args.iter)
 
@@ -163,7 +198,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
 
             break
 
-        real_img = next(loader)
+        real_img = next(loader)[0]
         real_img = real_img.to(device)
 
         requires_grad(generator, False)
@@ -341,11 +376,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("path", type=str, default='/dataset/002/')
+    parser.add_argument("--path", type=str, default='/dataset/002/')
     parser.add_argument("--iter", type=int, default=800000)
-    parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--n_sample", type=int, default=64)
-    parser.add_argument("--size", type=int, default=256)
+    parser.add_argument("--batch", type=int, default=1)
+    parser.add_argument("--n_sample", type=int, default=1)
+    parser.add_argument("--size", type=int, default=1024)
     parser.add_argument("--r1", type=float, default=10)
     parser.add_argument("--path_regularize", type=float, default=2)
     parser.add_argument("--path_batch_shrink", type=int, default=2)
@@ -445,7 +480,21 @@ if __name__ == "__main__":
         ]
     )
 
-    dataset = MultiResolutionDataset(args.path, transform, args.size)
+    output_type_lst = [
+        'person_mat',
+        # 'person_seg',
+        # 'face',
+        # 'face_seg',
+        # 'pose'
+    ]
+
+    dataset = MultiResolutionDataset(
+        name="base", 
+        root_path=osp.join(args.path, 'train'), 
+        resolution=args.size, 
+        domain=0, 
+        output_type_lst=output_type_lst
+    )
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,
