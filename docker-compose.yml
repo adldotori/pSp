@@ -1,0 +1,14 @@
+version: '3.4'
+
+services:
+  psp:
+    container_name: psp
+    networks: ['mindlogic-network']
+    build:
+        context: .
+        dockerfile: Dockerfile
+    volumes:
+     - './:/app/'
+     - '/hdd3/:/data/'
+     - '/home/fashionteam/lcm/stylegan2-pytorch/dataset/:/dataset/'
+networks: {mindlogic-network: {}}

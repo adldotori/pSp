@@ -1,0 +1,4 @@
+ninja
+opencv-python
+lmdb
+tqdm
