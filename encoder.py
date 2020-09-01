@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 from torch.autograd import Variable
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class Bottleneck(nn.Module):
     expansion = 4
@@ -42,23 +43,20 @@ class FPN(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
 
         # Bottom-up layers
-        self.layer1 = self._make_layer(block,  64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer1 = self._make_layer(block, 128, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 256, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 512, num_blocks[2], stride=2)
 
         # Top layer
-        self.toplayer = nn.Conv2d(2048, 256, kernel_size=1, stride=1, padding=0)  # Reduce channels
+        self.toplayer = nn.Conv2d(2048, 512, kernel_size=1, stride=1, padding=0)  # Reduce channels
 
         # Smooth layers
-        self.smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+        self.smooth1 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.smooth2 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
 
         # Lateral layers
-        self.latlayer1 = nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0)
-        self.latlayer2 = nn.Conv2d( 512, 256, kernel_size=1, stride=1, padding=0)
-        self.latlayer3 = nn.Conv2d( 256, 256, kernel_size=1, stride=1, padding=0)
+        self.latlayer1 = nn.Conv2d(1024, 512, kernel_size=1, stride=1, padding=0)
+        self.latlayer2 = nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0)
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -94,23 +92,42 @@ class FPN(nn.Module):
         c2 = self.layer1(c1)
         c3 = self.layer2(c2)
         c4 = self.layer3(c3)
-        c5 = self.layer4(c4)
+
         # Top-down
-        p5 = self.toplayer(c5)
-        p4 = self._upsample_add(p5, self.latlayer1(c4))
-        p3 = self._upsample_add(p4, self.latlayer2(c3))
-        p2 = self._upsample_add(p3, self.latlayer3(c2))
+        p4 = self.toplayer(c4)
+        p3 = self._upsample_add(p4, self.latlayer1(c3))
+        p2 = self._upsample_add(p3, self.latlayer2(c2))
+
         # Smooth
-        p4 = self.smooth1(p4)
-        p3 = self.smooth2(p3)
-        p2 = self.smooth3(p2)
-        return p2, p3, p4, p5
+        p3 = self.smooth1(p3)
+        p2 = self.smooth2(p2)
+        return p2, p3, p4
 
 
-def FPN101():
-    # return FPN(Bottleneck, [2,4,23,3])
-    return FPN(Bottleneck, [2,2,2,2])
+class pSpEncoder(nn.Module):
+    def __init__(self):
+        super(pSpEncoder, self).__init__()
+        self.fpn = FPN(Bottleneck, [2,2,2])
+
+        self.map2style = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+            nn.LeakyReLU()
+        )
+        self.small_style = nn.Sequential(*[self.map2style for i in range(4)])
+        self.medium_style = nn.Sequential(*[self.map2style for i in range(5)])
+        self.large_style = nn.Sequential(*[self.map2style for i in range(6)])
+
+    def forward(self, x):
+        p2, p3, p4 = self.fpn(x)
+        small_style = self.small_style(p4)
+        medium_style = self.medium_style(p3)
+        large_style = self.large_style(p3)
+
+        return small_style, medium_style, large_style
 
 if __name__ == '__main__':
-    model = FPN101()
-    torch.randn((1024,1024,3)).to(device)
+    model = pSpEncoder().to(device)
+    img = torch.randn((1,3,256,256)).to(device)
+    out = model(img)
+    for i in out:
+        print(i.shape)
