@@ -159,5 +159,5 @@ class Arcface(Module):
         emb_1 = self.model(img1)
         emb_2 = self.model(img2)
         cos_sim = self.cos_sim(emb_1, emb_2)
-        loss = torch.sum(cos_sim)
+        loss = len(cos_sim) - torch.sum(cos_sim)
         return loss

@@ -382,7 +382,7 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
                     utils.save_image(
                         sample,
                         f"sample/{str(i).zfill(6)}.png",
-                        nrow=int(args.n_sample ** 0.5),
+                        nrow=int(args.batch ** 0.5),
                         normalize=True,
                         range=(-1, 1),
                     )
