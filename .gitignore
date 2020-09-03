@@ -131,3 +131,6 @@ dmypy.json
 wandb/
 *.lmdb/
 *.pkl
+*.pt
+resize.py
+*.pth

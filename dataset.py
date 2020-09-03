@@ -10,6 +10,54 @@ from torchvision import transforms
 import glob
 import os
 
+
+class AIDataset(Dataset):
+    def __init__(self, name, root_path, resolution):
+        self.name = name
+        self.root_path = root_path
+        self.resolution = resolution
+
+        # pytorch 1.4 dose not support
+        # transforms.Normalize(0.5, 0.5, inplace=True)
+        # for various channels
+        # veresion over 1.5 supports it
+
+        self.transform_4ch = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5), inplace=True),
+        ])
+
+        self.transform_3ch = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True),
+        ])
+
+        self.transform_1ch = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,), inplace=True),
+        ])
+
+        self.image_dir_lists = glob.glob(os.path.join(root_path, '*'))
+        self.length = len(self.image_dir_lists)
+
+        print(f'{self.name} : {self.length}')
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):        
+        # random flip
+        # random_flip = random.randint(0, 1) # random face flip
+
+        img_path = self.image_dir_lists[index]
+        file_data = Image.open(img_path)
+        file_data = self.transform_3ch(file_data)
+
+        return [file_data]
+
 class MultiResolutionDataset(Dataset):
     def __init__(self, name, root_path, resolution, domain, output_type_lst):
         self.name = name

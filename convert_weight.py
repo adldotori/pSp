@@ -198,7 +198,7 @@ def fill_statedict(state_dict, vars, size):
 
 
 if __name__ == "__main__":
-    device = "cuda"
+    device = "cpu"
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=str, required=True)
@@ -210,7 +210,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sys.path.append(args.repo)
-
     import dnnlib
     from dnnlib import tflib
 
@@ -245,36 +244,3 @@ if __name__ == "__main__":
 
     name = os.path.splitext(os.path.basename(args.path))[0]
     torch.save(ckpt, name + ".pt")
-
-    batch_size = {256: 16, 512: 9, 1024: 4}
-    n_sample = batch_size.get(size, 25)
-
-    g = g.to(device)
-
-    z = np.random.RandomState(0).randn(n_sample, 512).astype("float32")
-
-    with torch.no_grad():
-        img_pt, _ = g(
-            [torch.from_numpy(z).to(device)],
-            truncation=0.5,
-            truncation_latent=latent_avg.to(device),
-            randomize_noise=False,
-        )
-
-    Gs_kwargs = dnnlib.EasyDict()
-    Gs_kwargs.randomize_noise = False
-    img_tf = g_ema.run(z, None, **Gs_kwargs)
-    img_tf = torch.from_numpy(img_tf).to(device)
-
-    img_diff = ((img_pt + 1) / 2).clamp(0.0, 1.0) - ((img_tf.to(device) + 1) / 2).clamp(
-        0.0, 1.0
-    )
-
-    img_concat = torch.cat((img_tf, img_pt, img_diff), dim=0)
-
-    print(img_diff.abs().max())
-
-    utils.save_image(
-        img_concat, name + ".png", nrow=n_sample, normalize=True, range=(-1, 1)
-    )
-

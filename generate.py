@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--pics', type=int, default=20)
     parser.add_argument('--truncation', type=float, default=1)
     parser.add_argument('--truncation_mean', type=int, default=4096)
-    parser.add_argument('--ckpt', type=str, default="stylegan2-ffhq-config-f.pt")
+    parser.add_argument('--ckpt', type=str, default="stylegan2-kceleb-config-f.pt")
     parser.add_argument('--channel_multiplier', type=int, default=2)
 
     args = parser.parse_args()

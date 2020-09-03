@@ -19,8 +19,11 @@ try:
 except ImportError:
     wandb = None
 
-from model import Generator, Discriminator
-from dataset import MultiResolutionDataset
+from model import Generator, Discriminator, pSpEncoder
+from pytorch_ranger import Ranger
+from lpips_pytorch import LPIPS
+from arcface import Arcface
+from dataset import *
 from distributed import (
     get_rank, 
     synchronize,
@@ -131,6 +134,26 @@ def g_path_regularize(fake_img, latents, mean_path_length, decay=0.01):
 
     return path_penalty, path_mean.detach(), path_lengths
 
+def pixel_wise_loss(real_img, gen_img):
+    real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
+    gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
+    l2_loss = nn.MSELoss()
+    return l2_loss(real_img, gen_img)
+
+def lpips_loss(real_img, gen_img):
+    real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
+    gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
+    criterion = LPIPS(
+        net_type='alex',  # choose a network type from ['alex', 'squeeze', 'vgg']
+        version='0.1'  # Currently, v0.1 is supported
+    ).to(device)
+    return criterion(real_img, gen_img).reshape(-1).squeeze()
+
+def identity_loss(real_img, gen_img):
+    real_img = F.interpolate(real_img, size=112, mode='bilinear', align_corners=False)
+    gen_img = F.interpolate(gen_img, size=112, mode='bilinear', align_corners=False)
+    arcface = Arcface().to(device)
+    return arcface(real_img, gen_img)
 
 def make_noise(batch, latent_dim, n_noise, device):
     if n_noise == 1:
@@ -155,7 +178,7 @@ def set_grad_none(model, targets):
             p.grad = None
 
 
-def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device):
+def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_optim, g_ema, device):
     loader = sample_data(loader)
     print(type(loader))
 
@@ -177,10 +200,12 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
     if args.distributed:
         g_module = generator.module
         d_module = discriminator.module
+        e_module = encoder.module
 
     else:
         g_module = generator
         d_module = discriminator
+        e_module = encoder
 
     accum = 0.5 ** (32 / (10 * 1000))
     ada_augment = torch.tensor([0.0, 0.0], device=device)
@@ -190,7 +215,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
 
     sample_z = torch.randn(args.n_sample, args.latent, device=device)
 
-    for idx in pbar:
+    for k, idx in enumerate(pbar):
         i = idx + args.start_iter
 
         if i > args.iter:
@@ -201,153 +226,159 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         real_img = next(loader)[0]
         real_img = real_img.to(device)
 
+        if k is 0:
+            sample_img = real_img
+            utils.save_image(
+                sample_img,
+                f"sample/sample.png",
+                nrow=int(args.n_sample ** 0.5),
+                normalize=True,
+                range=(-1, 1),
+            )
+
+
         requires_grad(generator, False)
-        requires_grad(discriminator, True)
-
-        noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise)
-
-        if args.augment:
-            real_img_aug, _ = augment(real_img, ada_aug_p)
-            fake_img, _ = augment(fake_img, ada_aug_p)
-
-        else:
-            real_img_aug = real_img
-
-        fake_pred = discriminator(fake_img)
-        real_pred = discriminator(real_img_aug)
-        d_loss = d_logistic_loss(real_pred, fake_pred)
-
-        loss_dict["d"] = d_loss
-        loss_dict["real_score"] = real_pred.mean()
-        loss_dict["fake_score"] = fake_pred.mean()
-
-        discriminator.zero_grad()
-        d_loss.backward()
-        d_optim.step()
-
-        if args.augment and args.augment_p == 0:
-            ada_augment_data = torch.tensor(
-                (torch.sign(real_pred).sum().item(), real_pred.shape[0]), device=device
-            )
-            ada_augment += reduce_sum(ada_augment_data)
-
-            if ada_augment[1] > 255:
-                pred_signs, n_pred = ada_augment.tolist()
-
-                r_t_stat = pred_signs / n_pred
-
-                if r_t_stat > args.ada_target:
-                    sign = 1
-
-                else:
-                    sign = -1
-
-                ada_aug_p += sign * ada_aug_step * n_pred
-                ada_aug_p = min(1, max(0, ada_aug_p))
-                ada_augment.mul_(0)
-
-        d_regularize = i % args.d_reg_every == 0
-
-        if d_regularize:
-            real_img.requires_grad = True
-            real_pred = discriminator(real_img)
-            r1_loss = d_r1_loss(real_pred, real_img)
-
-            discriminator.zero_grad()
-            (args.r1 / 2 * r1_loss * args.d_reg_every + 0 * real_pred[0]).backward()
-
-            d_optim.step()
-
-        loss_dict["r1"] = r1_loss
-
-        requires_grad(generator, True)
         requires_grad(discriminator, False)
+        requires_grad(encoder, True)
 
-        noise = mixing_noise(args.batch, args.latent, args.mixing, device)
-        fake_img, _ = generator(noise)
+        style = encoder(real_img)
+        gen_img, _ = generator(style)
 
-        if args.augment:
-            fake_img, _ = augment(fake_img, ada_aug_p)
+        l2_loss = pixel_wise_loss(real_img, gen_img)
+        pc_loss = lpips_loss(real_img, gen_img)
+        idt_loss = identity_loss(real_img, gen_img)
+        e_loss = args.lambda_1 * l2_loss + args.lambda_2 * pc_loss + args.lambda_3 * idt_loss
+       
+        encoder.zero_grad()
+        e_loss.backward()
+        e_optim.step() 
+        # noise = mixing_noise(args.batch, args.latent, args.mixing, device)
+        # fake_img, _ = generator(noise)
 
-        fake_pred = discriminator(fake_img)
-        g_loss = g_nonsaturating_loss(fake_pred)
+        # if args.augment:
+        #     real_img_aug, _ = augment(real_img, ada_aug_p)
+        #     fake_img, _ = augment(fake_img, ada_aug_p)
 
-        loss_dict["g"] = g_loss
+        # else:
+        #     real_img_aug = real_img
 
-        generator.zero_grad()
-        g_loss.backward()
-        g_optim.step()
+        # fake_pred = discriminator(fake_img)
+        # real_pred = discriminator(real_img_aug)
+        # d_loss = d_logistic_loss(real_pred, fake_pred)
 
-        g_regularize = i % args.g_reg_every == 0
+        # loss_dict["d"] = d_loss
+        # loss_dict["real_score"] = real_pred.mean()
+        # loss_dict["fake_score"] = fake_pred.mean()
 
-        if g_regularize:
-            path_batch_size = max(1, args.batch // args.path_batch_shrink)
-            noise = mixing_noise(path_batch_size, args.latent, args.mixing, device)
-            fake_img, latents = generator(noise, return_latents=True)
+        # discriminator.zero_grad()
+        # d_loss.backward()
+        # d_optim.step()
 
-            path_loss, mean_path_length, path_lengths = g_path_regularize(
-                fake_img, latents, mean_path_length
-            )
+        # if args.augment and args.augment_p == 0:
+        #     ada_augment_data = torch.tensor(
+        #         (torch.sign(real_pred).sum().item(), real_pred.shape[0]), device=device
+        #     )
+        #     ada_augment += reduce_sum(ada_augment_data)
 
-            generator.zero_grad()
-            weighted_path_loss = args.path_regularize * args.g_reg_every * path_loss
+        #     if ada_augment[1] > 255:
+        #         pred_signs, n_pred = ada_augment.tolist()
 
-            if args.path_batch_shrink:
-                weighted_path_loss += 0 * fake_img[0, 0, 0, 0]
+        #         r_t_stat = pred_signs / n_pred
 
-            weighted_path_loss.backward()
+        #         if r_t_stat > args.ada_target:
+        #             sign = 1
 
-            g_optim.step()
+        #         else:
+        #             sign = -1
 
-            mean_path_length_avg = (
-                reduce_sum(mean_path_length).item() / get_world_size()
-            )
+        #         ada_aug_p += sign * ada_aug_step * n_pred
+        #         ada_aug_p = min(1, max(0, ada_aug_p))
+        #         ada_augment.mul_(0)
 
-        loss_dict["path"] = path_loss
-        loss_dict["path_length"] = path_lengths.mean()
+        # d_regularize = i % args.d_reg_every == 0
 
-        accumulate(g_ema, g_module, accum)
+        # if d_regularize:
+        #     real_img.requires_grad = True
+        #     real_pred = discriminator(real_img)
+        #     r1_loss = d_r1_loss(real_pred, real_img)
 
-        loss_reduced = reduce_loss_dict(loss_dict)
+        #     discriminator.zero_grad()
+        #     (args.r1 / 2 * r1_loss * args.d_reg_every + 0 * real_pred[0]).backward()
 
-        d_loss_val = loss_reduced["d"].mean().item()
-        g_loss_val = loss_reduced["g"].mean().item()
-        r1_val = loss_reduced["r1"].mean().item()
-        path_loss_val = loss_reduced["path"].mean().item()
-        real_score_val = loss_reduced["real_score"].mean().item()
-        fake_score_val = loss_reduced["fake_score"].mean().item()
-        path_length_val = loss_reduced["path_length"].mean().item()
+        #     d_optim.step()
+
+        # loss_dict["r1"] = r1_loss
+
+        # requires_grad(generator, False)
+        # requires_grad(discriminator, False)
+
+        # noise = mixing_noise(args.batch, args.latent, args.mixing, device)
+        # fake_img, _ = generator(noise)
+
+        # if args.augment:
+        #     fake_img, _ = augment(fake_img, ada_aug_p)
+
+        # fake_pred = discriminator(fake_img)
+        # g_loss = g_nonsaturating_loss(fake_pred)
+
+        # loss_dict["g"] = g_loss
+
+        # encoder.zero_grad()
+        # g_loss.backward()
+        # g_optim.step()
+
+        # g_regularize = i % args.g_reg_every == 0
+
+        # if g_regularize:
+        #     path_batch_size = max(1, args.batch // args.path_batch_shrink)
+        #     # noise = mixing_noise(path_batch_size, args.latent, args.mixing, device)
+        #     fake_img, latents = generator(style, return_latents=True)
+
+        #     path_loss, mean_path_length, path_lengths = g_path_regularize(
+        #         fake_img, latents, mean_path_length
+        #     )
+
+        #     generator.zero_grad()
+        #     weighted_path_loss = args.path_regularize * args.g_reg_every * path_loss
+
+        #     if args.path_batch_shrink:
+        #         weighted_path_loss += 0 * fake_img[0, 0, 0, 0]
+
+        #     weighted_path_loss.backward()
+
+        #     g_optim.step()
+
+        #     mean_path_length_avg = (
+        #         reduce_sum(mean_path_length).item() / get_world_size()
+        #     )
+
+        # loss_dict["path"] = path_loss
+        # loss_dict["path_length"] = path_lengths.mean()
+
+        # accumulate(g_ema, g_module, accum)
+
+        # loss_reduced = reduce_loss_dict(loss_dict)
+
+        # d_loss_val = loss_reduced["d"].mean().item()
+        # g_loss_val = loss_reduced["g"].mean().item()
+        # r1_val = loss_reduced["r1"].mean().item()
+        # path_loss_val = loss_reduced["path"].mean().item()
+        # real_score_val = loss_reduced["real_score"].mean().item()
+        # fake_score_val = loss_reduced["fake_score"].mean().item()
+        # path_length_val = loss_reduced["path_length"].mean().item()
 
         if get_rank() == 0:
             pbar.set_description(
                 (
-                    f"d: {d_loss_val:.4f}; g: {g_loss_val:.4f}; r1: {r1_val:.4f}; "
-                    f"path: {path_loss_val:.4f}; mean path: {mean_path_length_avg:.4f}; "
-                    f"augment: {ada_aug_p:.4f}"
+                    f"e: {e_loss:.4f}, l2: {l2_loss:.4f} pc: {pc_loss:.4f} idt: {idt_loss:.4f}"
                 )
             )
 
-            if wandb and args.wandb:
-                wandb.log(
-                    {
-                        "Generator": g_loss_val,
-                        "Discriminator": d_loss_val,
-                        "Augment": ada_aug_p,
-                        "Rt": r_t_stat,
-                        "R1": r1_val,
-                        "Path Length Regularization": path_loss_val,
-                        "Mean Path Length": mean_path_length,
-                        "Real Score": real_score_val,
-                        "Fake Score": fake_score_val,
-                        "Path Length": path_length_val,
-                    }
-                )
-
             if i % 100 == 0:
                 with torch.no_grad():
-                    g_ema.eval()
-                    sample, _ = g_ema([sample_z])
+                    encoder.eval()
+                    style = encoder(sample_img)
+                    sample, _ = generator(style)
                     utils.save_image(
                         sample,
                         f"sample/{str(i).zfill(6)}.png",
@@ -356,19 +387,71 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         range=(-1, 1),
                     )
 
-            if i % 10000 == 0:
+            if i % 1000 == 0:
                 torch.save(
                     {
                         "g": g_module.state_dict(),
                         "d": d_module.state_dict(),
+                        "e": e_module.state_dict(),
                         "g_ema": g_ema.state_dict(),
                         "g_optim": g_optim.state_dict(),
                         "d_optim": d_optim.state_dict(),
                         "args": args,
-                        "ada_aug_p": ada_aug_p,
+                        # "ada_aug_p": ada_aug_p,
                     },
                     f"checkpoint/{str(i).zfill(6)}.pt",
                 )
+
+        # if get_rank() == 0:
+        #     pbar.set_description(
+        #         (
+        #             f"d: {d_loss_val:.4f}; g: {g_loss_val:.4f}; r1: {r1_val:.4f}; "
+        #             f"path: {path_loss_val:.4f}; mean path: {mean_path_length_avg:.4f}; "
+        #             f"augment: {ada_aug_p:.4f}"
+        #         )
+        #     )
+
+        #     if wandb and args.wandb:
+        #         wandb.log(
+        #             {
+        #                 "Generator": g_loss_val,
+        #                 "Discriminator": d_loss_val,
+        #                 "Augment": ada_aug_p,
+        #                 "Rt": r_t_stat,
+        #                 "R1": r1_val,
+        #                 "Path Length Regularization": path_loss_val,
+        #                 "Mean Path Length": mean_path_length,
+        #                 "Real Score": real_score_val,
+        #                 "Fake Score": fake_score_val,
+        #                 "Path Length": path_length_val,
+        #             }
+        #         )
+
+        #     if i % 100 == 0:
+        #         with torch.no_grad():
+        #             g_ema.eval()
+        #             sample, _ = g_ema([sample_z])
+        #             utils.save_image(
+        #                 sample,
+        #                 f"sample/{str(i).zfill(6)}.png",
+        #                 nrow=int(args.n_sample ** 0.5),
+        #                 normalize=True,
+        #                 range=(-1, 1),
+        #             )
+
+        #     if i % 1000 == 0:
+        #         torch.save(
+        #             {
+        #                 "g": g_module.state_dict(),
+        #                 "d": d_module.state_dict(),
+        #                 "g_ema": g_ema.state_dict(),
+        #                 "g_optim": g_optim.state_dict(),
+        #                 "d_optim": d_optim.state_dict(),
+        #                 "args": args,
+        #                 "ada_aug_p": ada_aug_p,
+        #             },
+        #             f"checkpoint/{str(i).zfill(6)}.pt",
+        #         )
 
 
 if __name__ == "__main__":
@@ -376,9 +459,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--path", type=str, default='/dataset/002/')
+    parser.add_argument("--path", type=str, default='/dataset/')
     parser.add_argument("--iter", type=int, default=800000)
-    parser.add_argument("--batch", type=int, default=1)
+    parser.add_argument("--batch", type=int, default=12)
     parser.add_argument("--n_sample", type=int, default=1)
     parser.add_argument("--size", type=int, default=1024)
     parser.add_argument("--r1", type=float, default=10)
@@ -386,6 +469,7 @@ if __name__ == "__main__":
     parser.add_argument("--path_batch_shrink", type=int, default=2)
     parser.add_argument("--d_reg_every", type=int, default=16)
     parser.add_argument("--g_reg_every", type=int, default=4)
+    parser.add_argument("--e_reg_every", type=int, default=4)
     parser.add_argument("--mixing", type=float, default=0.9)
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--lr", type=float, default=0.002)
@@ -396,6 +480,9 @@ if __name__ == "__main__":
     parser.add_argument("--augment_p", type=float, default=0)
     parser.add_argument("--ada_target", type=float, default=0.6)
     parser.add_argument("--ada_length", type=int, default=500 * 1000)
+    parser.add_argument("--lambda_1", type=float, default=1)
+    parser.add_argument("--lambda_2", type=float, default=0.8)
+    parser.add_argument("--lambda_3", type=float, default=0.1)
 
     args = parser.parse_args()
 
@@ -418,14 +505,17 @@ if __name__ == "__main__":
     discriminator = Discriminator(
         args.size, channel_multiplier=args.channel_multiplier
     ).to(device)
+    encoder = pSpEncoder().to(device)
     g_ema = Generator(
         args.size, args.latent, args.n_mlp, channel_multiplier=args.channel_multiplier
     ).to(device)
+
     g_ema.eval()
     accumulate(g_ema, generator, 0)
 
     g_reg_ratio = args.g_reg_every / (args.g_reg_every + 1)
     d_reg_ratio = args.d_reg_every / (args.d_reg_every + 1)
+    e_reg_ratio = args.e_reg_every / (args.e_reg_every + 1)
 
     g_optim = optim.Adam(
         generator.parameters(),
@@ -437,6 +527,7 @@ if __name__ == "__main__":
         lr=args.lr * d_reg_ratio,
         betas=(0 ** d_reg_ratio, 0.99 ** d_reg_ratio),
     )
+    e_optim = Ranger(encoder.parameters())
 
     if args.ckpt is not None:
         print("load model:", args.ckpt)
@@ -454,8 +545,8 @@ if __name__ == "__main__":
         discriminator.load_state_dict(ckpt["d"])
         g_ema.load_state_dict(ckpt["g_ema"])
 
-        g_optim.load_state_dict(ckpt["g_optim"])
-        d_optim.load_state_dict(ckpt["d_optim"])
+        # g_optim.load_state_dict(ckpt["g_optim"])
+        # d_optim.load_state_dict(ckpt["d_optim"])
 
     if args.distributed:
         generator = nn.parallel.DistributedDataParallel(
@@ -467,6 +558,13 @@ if __name__ == "__main__":
 
         discriminator = nn.parallel.DistributedDataParallel(
             discriminator,
+            device_ids=[args.local_rank],
+            output_device=args.local_rank,
+            broadcast_buffers=False,
+        )
+        
+        encoder = nn.parallel.DistributedDataParallel(
+            encoder,
             device_ids=[args.local_rank],
             output_device=args.local_rank,
             broadcast_buffers=False,
@@ -488,13 +586,18 @@ if __name__ == "__main__":
         # 'pose'
     ]
 
-    dataset = MultiResolutionDataset(
+    dataset = AIDataset(
         name="base", 
-        root_path=osp.join(args.path, 'train'), 
-        resolution=args.size, 
-        domain=0, 
-        output_type_lst=output_type_lst
+        root_path=args.path,
+        resolution=args.size
     )
+    # dataset = MultiResolutionDataset(
+    #     name="base", 
+    #     root_path=osp.join(args.path, 'train'), 
+    #     resolution=args.size, 
+    #     domain=0, 
+    #     output_type_lst=output_type_lst
+    # )
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,
@@ -505,4 +608,4 @@ if __name__ == "__main__":
     if get_rank() == 0 and wandb is not None and args.wandb:
         wandb.init(project="stylegan 2")
 
-    train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device)
+    train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_optim, g_ema, device)

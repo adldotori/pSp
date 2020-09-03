@@ -10,6 +10,8 @@ from torch.autograd import Function
 
 from op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
 
+img_channels = 3
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -348,8 +350,8 @@ class ToRGB(nn.Module):
         if upsample:
             self.upsample = Upsample(blur_kernel)
 
-        self.conv = ModulatedConv2d(in_channel, 4, 1, style_dim, demodulate=False)
-        self.bias = nn.Parameter(torch.zeros(1, 4, 1, 1))
+        self.conv = ModulatedConv2d(in_channel, img_channels, 1, style_dim, demodulate=False)
+        self.bias = nn.Parameter(torch.zeros(1, img_channels, 1, 1))
 
     def forward(self, input, style, skip=None):
         out = self.conv(input, style)
@@ -482,8 +484,8 @@ class Generator(nn.Module):
         noise=None,
         randomize_noise=True,
     ):
-        if not input_is_latent:
-            styles = [self.style(s) for s in styles]
+        # if not input_is_latent:
+        #     styles = [self.style(s) for s in styles]
 
         if noise is None:
             if randomize_noise:
@@ -493,34 +495,39 @@ class Generator(nn.Module):
                     getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
                 ]
 
-        if truncation < 1:
-            style_t = []
+        # if truncation < 1:
+        #     style_t = []
 
-            for style in styles:
-                style_t.append(
-                    truncation_latent + truncation * (style - truncation_latent)
-                )
+        #     for style in styles:
+        #         style_t.append(
+        #             truncation_latent + truncation * (style - truncation_latent)
+        #         )
 
-            styles = style_t
+        #     styles = style_t
 
-        if len(styles) < 2:
-            inject_index = self.n_latent
+        # if len(styles) < 2:
+        #     inject_index = self.n_latent
 
-            if styles[0].ndim < 3:
-                latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+        #     if styles[0].ndim < 3:
+        #         latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
 
-            else:
-                latent = styles[0]
+        #     else:
+        #         latent = styles[0]
 
-        else:
-            if inject_index is None:
-                inject_index = random.randint(1, self.n_latent - 1)
+        # else:
+        #     if inject_index is None:
+        #         inject_index = random.randint(1, self.n_latent - 1)
 
-            latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
-            latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
+        #     latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+        #     latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
 
-            latent = torch.cat([latent, latent2], 1)
-
+        #     latent = torch.cat([latent, latent2], 1)
+        cnt_dict = {0:3, 1:4, 2:11}
+        latent = []
+        for i, style in enumerate(styles):
+            reshape_style = style.view(-1,1,512)
+            latent.append(torch.cat([reshape_style for i in range(cnt_dict[i])], dim=1))
+        latent = torch.cat(latent, dim=1)
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
         skip = self.to_rgb1(out, latent[:, 1])
@@ -630,7 +637,7 @@ class Discriminator(nn.Module):
             1024: 16 * channel_multiplier,
         }
 
-        convs = [ConvLayer(4, channels[size], 1)]
+        convs = [ConvLayer(img_channels, channels[size], 1)]
 
         log_size = int(math.log(size, 2))
 
@@ -674,3 +681,131 @@ class Discriminator(nn.Module):
 
         return out
 
+
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, in_planes, planes, stride=1):
+        super(Bottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != self.expansion*planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(self.expansion*planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+        out += self.shortcut(x)
+        out = F.relu(out)
+        return out
+
+
+class FPN(nn.Module):
+    def __init__(self, block, num_blocks):
+        super(FPN, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+
+        # Bottom-up layers
+        self.layer1 = self._make_layer(block, 128, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 256, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 512, num_blocks[2], stride=2)
+
+        # Top layer
+        self.toplayer = nn.Conv2d(2048, 512, kernel_size=1, stride=1, padding=0)  # Reduce channels
+
+        # Smooth layers
+        self.smooth1 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.smooth2 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+
+        # Lateral layers
+        self.latlayer1 = nn.Conv2d(1024, 512, kernel_size=1, stride=1, padding=0)
+        self.latlayer2 = nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def _upsample_add(self, x, y):
+        '''Upsample and add two feature maps.
+        Args:
+          x: (Variable) top feature map to be upsampled.
+          y: (Variable) lateral feature map.
+        Returns:
+          (Variable) added feature map.
+        Note in PyTorch, when input size is odd, the upsampled feature map
+        with `F.upsample(..., scale_factor=2, mode='nearest')`
+        maybe not equal to the lateral feature map size.
+        e.g.
+        original input size: [N,_,15,15] ->
+        conv2d feature map size: [N,_,8,8] ->
+        upsampled feature map size: [N,_,16,16]
+        So we choose bilinear upsample which supports arbitrary output sizes.
+        '''
+        _,_,H,W = y.size()
+        return F.upsample(x, size=(H,W), mode='bilinear') + y
+
+    def forward(self, x):
+        # Bottom-up
+        c1 = F.relu(self.bn1(self.conv1(x)))
+        c1 = F.max_pool2d(c1, kernel_size=3, stride=2, padding=1)
+        c2 = self.layer1(c1)
+        c3 = self.layer2(c2)
+        c4 = self.layer3(c3)
+
+        # Top-down
+        p4 = self.toplayer(c4)
+        p3 = self._upsample_add(p4, self.latlayer1(c3))
+        p2 = self._upsample_add(p3, self.latlayer2(c2))
+
+        # Smooth
+        p3 = self.smooth1(p3)
+        p2 = self.smooth2(p2)
+        return p2, p3, p4
+
+
+class pSpEncoder(nn.Module):
+    def __init__(self):
+        super(pSpEncoder, self).__init__()
+        self.fpn = FPN(Bottleneck, [2,2,2])
+
+        self.map2style = nn.Sequential(
+            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+            nn.LeakyReLU()
+        )
+        self.small_style = nn.Sequential(*[self.map2style for i in range(4)])
+        self.medium_style = nn.Sequential(*[self.map2style for i in range(5)])
+        self.large_style = nn.Sequential(*[self.map2style for i in range(6)])
+
+    def forward(self, x):
+        x = F.interpolate(x, size=256)
+        p2, p3, p4 = self.fpn(x)
+        small_style = self.small_style(p4)
+        medium_style = self.medium_style(p3)
+        large_style = self.large_style(p3)
+
+        return small_style, medium_style, large_style
+
+if __name__ == '__main__':
+    model = pSpEncoder().to(device)
+    img = torch.randn((1,3,256,256)).to(device)
+    out = model(img)
+    for i in out:
+        print(i.shape) 

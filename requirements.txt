@@ -2,3 +2,6 @@ ninja
 opencv-python
 lmdb
 tqdm
+dlib
+tensorflow-gpu==1.15.0
+pytorch-ranger==0.1.1
