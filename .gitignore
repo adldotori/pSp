@@ -134,3 +134,5 @@ wandb/
 *.pt
 resize.py
 *.pth
+test/
+infer/

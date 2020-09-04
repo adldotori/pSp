@@ -1,6 +1,7 @@
 import argparse
 
 import torch
+from torch.nn import functional as F
 from torchvision import utils
 from model import Generator, pSpEncoder
 from tqdm import tqdm
@@ -35,7 +36,16 @@ def generate(args, loader, generator, encoder, device, mean_latent):
     loader = sample_data(loader)
     real_img = next(loader)[0]
     real_img = real_img.to(device)
-
+    
+    # change background at 4 channels image
+    # seg = torch.cat([real_img[:,3:,:,:],real_img[:,3:,:,:],real_img[:,3:,:,:]], axis=1)
+    # bg1 = torch.zeros_like(real_img[:,:1,:,:]).fill_(0.09)
+    # bg2 = torch.zeros_like(real_img[:,:1,:,:]).fill_(-0.07)
+    # bg3 = torch.zeros_like(real_img[:,:1,:,:]).fill_(0.9)
+    # bg = torch.cat([bg1, bg2, bg3], axis=1)
+    # real_img = torch.where(seg>0, real_img[:,:3,:,:], bg)
+    
+    real_img = F.interpolate(real_img, size=1024, mode='bilinear')
     with torch.no_grad():
         generator.eval()
 
@@ -48,31 +58,30 @@ def generate(args, loader, generator, encoder, device, mean_latent):
         utils.save_image(
             concat,
             f'infer/real.png',
-            nrow=4,
+            nrow=args.sample,
             normalize=True,
             range=(-1, 1),
         )
 
+    # with torch.no_grad():
+    #     generator.eval()
 
-    with torch.no_grad():
-        generator.eval()
-
-        sample_z = torch.randn(args.sample, args.latent, device=device)
-        gen, _ = generator([sample_z], truncation=args.truncation, truncation_latent=mean_latent)
+    #     sample_z = torch.randn(args.sample, args.latent, device=device)
+    #     gen, _ = generator([sample_z], truncation=args.truncation, truncation_latent=mean_latent)
        
-        style = encoder(gen)
-        sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
+    #     style = encoder(gen)
+    #     sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
          
-        concat = torch.stack([gen, sample])
-        concat = concat.view(-1,3,1024,1024)
-        os.makedirs('infer', exist_ok=True)
-        utils.save_image(
-            concat,
-            f'infer/gen.png',
-            nrow=4,
-            normalize=True,
-            range=(-1, 1),
-        )
+    #     concat = torch.stack([gen, sample])
+    #     concat = concat.view(-1,3,1024,1024)
+    #     os.makedirs('infer', exist_ok=True)
+    #     utils.save_image(
+    #         concat,
+    #         f'infer/gen.png',
+    #         nrow=args.sample,
+    #         normalize=True,
+    #         range=(-1, 1),
+    #     )
 
 if __name__ == '__main__':
     device = 'cuda'

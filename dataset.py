@@ -54,7 +54,7 @@ class AIDataset(Dataset):
 
         img_path = self.image_dir_lists[index]
         file_data = Image.open(img_path)
-        file_data = self.transform_3ch(file_data)
+        file_data = self.transform_4ch(file_data)
 
         return [file_data]
 

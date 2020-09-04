@@ -799,7 +799,7 @@ class pSpEncoder(nn.Module):
         self.large_style = nn.Sequential(*[self.map2style for i in range(6)])
 
     def forward(self, x):
-        x = F.interpolate(x, size=256)
+        x = F.interpolate(x, size=256, mode='bilinear')
         p2, p3, p4 = self.fpn(x)
         small_style = self.small_style(p4)
         medium_style = self.medium_style(p3)
