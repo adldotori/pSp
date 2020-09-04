@@ -231,7 +231,7 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
             utils.save_image(
                 sample_img,
                 f"sample/sample.png",
-                nrow=int(args.n_sample ** 0.5),
+                nrow=int(args.batch ** 0.5),
                 normalize=True,
                 range=(-1, 1),
             )
@@ -568,6 +568,7 @@ if __name__ == "__main__":
             device_ids=[args.local_rank],
             output_device=args.local_rank,
             broadcast_buffers=False,
+            find_unused_parameters=True
         )
 
     transform = transforms.Compose(

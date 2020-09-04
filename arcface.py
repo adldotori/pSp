@@ -147,7 +147,7 @@ class Arcface(Module):
     def __init__(self):
         super(Arcface, self).__init__()
         self.model = Backbone(50, 0.6, 'ir_se')
-        self.model.load_state_dict(torch.load('model_ir_se50.pth'))
+        self.model.load_state_dict(torch.load('config/model_ir_se50.pth'))
         self.requires_grad(self.model, False)
         self.cos_sim = torch.nn.CosineSimilarity()
 
