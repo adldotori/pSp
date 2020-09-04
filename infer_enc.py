@@ -42,10 +42,34 @@ def generate(args, loader, generator, encoder, device, mean_latent):
         style = encoder(real_img)
         sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
         
+        concat = torch.stack([real_img, sample])
+        concat = concat.view(-1,3,1024,1024)
+        os.makedirs('infer', exist_ok=True)
         utils.save_image(
-            sample,
-            f'infer/{str(i).zfill(6)}.png',
-            nrow=args.sample//2,
+            concat,
+            f'infer/real.png',
+            nrow=4,
+            normalize=True,
+            range=(-1, 1),
+        )
+
+
+    with torch.no_grad():
+        generator.eval()
+
+        sample_z = torch.randn(args.sample, args.latent, device=device)
+        gen, _ = generator([sample_z], truncation=args.truncation, truncation_latent=mean_latent)
+       
+        style = encoder(gen)
+        sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
+         
+        concat = torch.stack([gen, sample])
+        concat = concat.view(-1,3,1024,1024)
+        os.makedirs('infer', exist_ok=True)
+        utils.save_image(
+            concat,
+            f'infer/gen.png',
+            nrow=4,
             normalize=True,
             range=(-1, 1),
         )
@@ -57,10 +81,10 @@ if __name__ == '__main__':
 
     parser.add_argument("--path", type=str, default='/dataset/')
     parser.add_argument('--size', type=int, default=1024)
-    parser.add_argument('--sample', type=int, default=1)
+    parser.add_argument('--sample', type=int, default=4)
     parser.add_argument('--truncation', type=float, default=1)
     parser.add_argument('--truncation_mean', type=int, default=4096)
-    parser.add_argument('--ckpt', type=str, default="checkpoint/021000.pt")
+    parser.add_argument('--ckpt', type=str, default="checkpoint/022000.pt")
     parser.add_argument('--channel_multiplier', type=int, default=2)
 
     args = parser.parse_args()

@@ -484,9 +484,6 @@ class Generator(nn.Module):
         noise=None,
         randomize_noise=True,
     ):
-        # if not input_is_latent:
-        #     styles = [self.style(s) for s in styles]
-
         if noise is None:
             if randomize_noise:
                 noise = [None] * self.num_layers
@@ -495,45 +492,51 @@ class Generator(nn.Module):
                     getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
                 ]
 
-        # if truncation < 1:
-        #     style_t = []
+        if len(styles) == 3: # encoder to generator
+            cnt_dict = {0:3, 1:4, 2:11}
+            latent = []
+            for i, style in enumerate(styles):
+                reshape_style = style.view(-1,1,512)
+                latent.append(torch.cat([reshape_style for i in range(cnt_dict[i])], dim=1))
+            latent = torch.cat(latent, dim=1)
 
-        #     for style in styles:
-        #         style_t.append(
-        #             truncation_latent + truncation * (style - truncation_latent)
-        #         )
+        else: # latent z to generator
+            if not input_is_latent:
+                styles = [self.style(s) for s in styles]
 
-        #     styles = style_t
+            if truncation < 1:
+                style_t = []
 
-        # if len(styles) < 2:
-        #     inject_index = self.n_latent
+                for style in styles:
+                    style_t.append(
+                        truncation_latent + truncation * (style - truncation_latent)
+                    )
 
-        #     if styles[0].ndim < 3:
-        #         latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+                styles = style_t
 
-        #     else:
-        #         latent = styles[0]
+            if len(styles) < 2:
+                inject_index = self.n_latent
 
-        # else:
-        #     if inject_index is None:
-        #         inject_index = random.randint(1, self.n_latent - 1)
+                if styles[0].ndim < 3:
+                    latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
 
-        #     latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
-        #     latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
+                else:
+                    latent = styles[0]
 
-        #     latent = torch.cat([latent, latent2], 1)
-        cnt_dict = {0:3, 1:4, 2:11}
-        latent = []
-        for i, style in enumerate(styles):
-            reshape_style = style.view(-1,1,512)
-            latent.append(torch.cat([reshape_style for i in range(cnt_dict[i])], dim=1))
-        latent = torch.cat(latent, dim=1)
+            else:
+                if inject_index is None:
+                    inject_index = random.randint(1, self.n_latent - 1)
+
+                latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+                latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
+
+                latent = torch.cat([latent, latent2], 1)
+
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
         skip = self.to_rgb1(out, latent[:, 1])
 
         i = 1
-        print(latent.shape)
         for conv1, conv2, noise1, noise2, to_rgb in zip(
             self.convs[::2], self.convs[1::2], noise[1::2], noise[2::2], self.to_rgbs
         ):
