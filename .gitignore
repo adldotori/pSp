@@ -136,3 +136,4 @@ resize.py
 *.pth
 test/
 infer/
+log_file

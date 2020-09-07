@@ -544,6 +544,8 @@ if __name__ == "__main__":
         generator.load_state_dict(ckpt["g"])
         discriminator.load_state_dict(ckpt["d"])
         g_ema.load_state_dict(ckpt["g_ema"])
+        if 'e' in ckpt.keys():
+            encoder.load_state_dict(ckpt["e"])
 
         # g_optim.load_state_dict(ckpt["g_optim"])
         # d_optim.load_state_dict(ckpt["d_optim"])

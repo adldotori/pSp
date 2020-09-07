@@ -54,7 +54,13 @@ class AIDataset(Dataset):
 
         img_path = self.image_dir_lists[index]
         file_data = Image.open(img_path)
-        file_data = self.transform_4ch(file_data)
+        shape = np.array(file_data).shape
+        if shape[-1] == 4:
+            file_data = self.transform_4ch(file_data)
+        elif shape[-1] == 3:
+            file_data = self.transform_3ch(file_data)
+        elif shape[-1] == 1:
+            file_data = self.transform_1ch(file_data)
 
         return [file_data]
 
