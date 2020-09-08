@@ -492,13 +492,14 @@ class Generator(nn.Module):
                     getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
                 ]
 
-        if len(styles) == 3: # encoder to generator
-            cnt_dict = {0:3, 1:4, 2:11}
-            latent = []
-            for i, style in enumerate(styles):
-                reshape_style = style.view(-1,1,512)
-                latent.append(torch.cat([reshape_style for i in range(cnt_dict[i])], dim=1))
-            latent = torch.cat(latent, dim=1)
+        if styles.shape[1] == 18: # encoder to generator
+            latent = styles
+            # cnt_dict = {0:3, 1:4, 2:11}
+            # latent = []
+            # for i, style in enumerate(styles):
+            #     reshape_style = style.view(-1,1,512)
+            #     latent.append(torch.cat([reshape_style for i in range(cnt_dict[i])], dim=1))
+            # latent = torch.cat(latent, dim=1)
 
         else: # latent z to generator
             if not input_is_latent:
@@ -794,18 +795,25 @@ class pSpEncoder(nn.Module):
             nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
             nn.LeakyReLU()
         )
-        self.small_style = nn.Sequential(*[self.map2style for i in range(4)])
-        self.medium_style = nn.Sequential(*[self.map2style for i in range(5)])
-        self.large_style = nn.Sequential(*[self.map2style for i in range(6)])
+        self.small_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(4)]) for i in range(3))
+        self.medium_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(5)]) for i in range(4))
+        self.large_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(6)]) for i in range(11))
 
     def forward(self, x):
         x = F.interpolate(x, size=256, mode='bilinear')
         p2, p3, p4 = self.fpn(x)
-        small_style = self.small_style(p4)
-        medium_style = self.medium_style(p3)
-        large_style = self.large_style(p3)
 
-        return small_style, medium_style, large_style
+        styles = []
+        for i in range(18):
+            if i < 3:
+                style = self.small_style[i](p4)
+            elif i < 7:
+                style = self.medium_style[i-3](p3)
+            else:
+                style = self.large_style[i-7](p2)
+            styles.append(style.view(-1,1,512))
+        styles = torch.cat(styles, dim=1)
+        return styles
 
 if __name__ == '__main__':
     model = pSpEncoder().to(device)

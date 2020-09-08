@@ -14,7 +14,6 @@ from distributed import (
     reduce_sum,
     get_world_size,
 )
-from non_leaking import augment
 
 
 def data_sampler(dataset, shuffle, distributed):

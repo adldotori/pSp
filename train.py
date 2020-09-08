@@ -21,7 +21,7 @@ except ImportError:
 
 from model import Generator, Discriminator, pSpEncoder
 from pytorch_ranger import Ranger
-from lpips_pytorch import LPIPS
+from lpips.lpips import LPIPS
 from arcface import Arcface
 from dataset import *
 from distributed import (
@@ -31,7 +31,6 @@ from distributed import (
     reduce_sum,
     get_world_size,
 )
-from non_leaking import augment
 
 
 def data_sampler(dataset, shuffle, distributed):
@@ -144,7 +143,7 @@ def lpips_loss(real_img, gen_img):
     real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
     gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
     criterion = LPIPS(
-        net_type='alex',  # choose a network type from ['alex', 'squeeze', 'vgg']
+        net_type='vgg',  # choose a network type from ['alex', 'squeeze', 'vgg']
         version='0.1'  # Currently, v0.1 is supported
     ).to(device)
     return criterion(real_img, gen_img).reshape(-1).squeeze()
@@ -393,11 +392,7 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
                         "g": g_module.state_dict(),
                         "d": d_module.state_dict(),
                         "e": e_module.state_dict(),
-                        "g_ema": g_ema.state_dict(),
-                        "g_optim": g_optim.state_dict(),
-                        "d_optim": d_optim.state_dict(),
                         "args": args,
-                        # "ada_aug_p": ada_aug_p,
                     },
                     f"checkpoint/{str(i).zfill(6)}.pt",
                 )
@@ -462,7 +457,7 @@ if __name__ == "__main__":
     parser.add_argument("--path", type=str, default='/dataset/')
     parser.add_argument("--iter", type=int, default=800000)
     parser.add_argument("--batch", type=int, default=12)
-    parser.add_argument("--n_sample", type=int, default=1)
+    parser.add_argument("--n_sample", type=int, default=4)
     parser.add_argument("--size", type=int, default=1024)
     parser.add_argument("--r1", type=float, default=10)
     parser.add_argument("--path_regularize", type=float, default=2)
@@ -543,7 +538,7 @@ if __name__ == "__main__":
 
         generator.load_state_dict(ckpt["g"])
         discriminator.load_state_dict(ckpt["d"])
-        g_ema.load_state_dict(ckpt["g_ema"])
+        # g_ema.load_state_dict(ckpt["g_ema"])
         if 'e' in ckpt.keys():
             encoder.load_state_dict(ckpt["e"])
 

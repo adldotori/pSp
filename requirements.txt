@@ -3,5 +3,6 @@ opencv-python
 lmdb
 tqdm
 dlib
+scikit-image
 tensorflow-gpu==1.15.0
 pytorch-ranger==0.1.1
