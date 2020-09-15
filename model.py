@@ -492,7 +492,7 @@ class Generator(nn.Module):
                     getattr(self.noises, f'noise_{i}') for i in range(self.num_layers)
                 ]
 
-        if styles.shape[1] == 18: # encoder to generator
+        if not type(styles) is list: # encoder to generator
             latent = styles
             # cnt_dict = {0:3, 1:4, 2:11}
             # latent = []
@@ -785,19 +785,280 @@ class FPN(nn.Module):
         p2 = self.smooth2(p2)
         return p2, p3, p4
 
-
 class pSpEncoder(nn.Module):
     def __init__(self):
         super(pSpEncoder, self).__init__()
         self.fpn = FPN(Bottleneck, [2,2,2])
+        
+        self.small_style = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            )
+        ])
+        self.medium_style = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            )
+        ])
+        self.large_style = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+            nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+                nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
+                nn.LeakyReLU(),
+            ),
+        ])
 
-        self.map2style = nn.Sequential(
-            nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), 
-            nn.LeakyReLU()
-        )
-        self.small_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(4)]) for i in range(3))
-        self.medium_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(5)]) for i in range(4))
-        self.large_style = nn.ModuleList(nn.Sequential(*[self.map2style for i in range(6)]) for i in range(11))
+    def map2style(self, num):
+        return nn.Sequential(*[self.block() for i in range(num)]).to(device)
 
     def forward(self, x):
         x = F.interpolate(x, size=256, mode='bilinear')
@@ -805,15 +1066,46 @@ class pSpEncoder(nn.Module):
 
         styles = []
         for i in range(18):
-            if i < 3:
+            if i < 2:
                 style = self.small_style[i](p4)
-            elif i < 7:
-                style = self.medium_style[i-3](p3)
+            elif i < 6:
+                style = self.medium_style[i-2](p3)
             else:
-                style = self.large_style[i-7](p2)
+                style = self.large_style[i-6](p2)
             styles.append(style.view(-1,1,512))
         styles = torch.cat(styles, dim=1)
         return styles
+
+# class pSpEncoder(nn.Module):
+#     def __init__(self):
+#         super(pSpEncoder, self).__init__()
+#         self.fpn = FPN(Bottleneck, [2,2,2])
+
+#         self.small_style = [self.map2style(4) for i in range(2)]
+#         self.medium_style = [self.map2style(5) for i in range(4)]
+#         self.large_style = [self.map2style(6) for i in range(12)]
+
+#     def block(self):
+#         return nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1), nn.LeakyReLU())
+
+#     def map2style(self, num):
+#         return nn.Sequential(*[self.block() for i in range(num)]).to(device)
+
+#     def forward(self, x):
+#         x = F.interpolate(x, size=256, mode='bilinear')
+#         p2, p3, p4 = self.fpn(x)
+
+#         styles = []
+#         for i in range(18):
+#             if i < 2:
+#                 style = self.small_style[i](p4)
+#             elif i < 6:
+#                 style = self.medium_style[i-2](p3)
+#             else:
+#                 style = self.large_style[i-6](p2)
+#             styles.append(style.view(-1,1,512))
+#         styles = torch.cat(styles, dim=1)
+#         return styles
 
 if __name__ == '__main__':
     model = pSpEncoder().to(device)

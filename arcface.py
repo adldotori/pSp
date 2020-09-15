@@ -146,7 +146,7 @@ class Arcface(Module):
     # implementation of additive margin softmax loss in https://arxiv.org/abs/1801.05599    
     def __init__(self):
         super(Arcface, self).__init__()
-        self.model = Backbone(50, 0.6, 'ir_se')
+        self.model = Backbone(50, 0.0, 'ir_se')
         self.model.load_state_dict(torch.load('config/model_ir_se50.pth'))
         self.requires_grad(self.model, False)
         self.cos_sim = torch.nn.CosineSimilarity()

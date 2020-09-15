@@ -46,6 +46,7 @@ def generate(args, loader, generator, encoder, device, mean_latent):
             bg3 = torch.zeros_like(real_img[:,:1,:,:]).fill_(0.0)
             bg = torch.cat([bg1, bg2, bg3], axis=1)
             real_img = torch.where(seg>0, real_img[:,:3,:,:], bg)
+
         real_img = real_img.to(device)
         
         real_img = F.interpolate(real_img, size=1024, mode='bilinear')
@@ -53,6 +54,7 @@ def generate(args, loader, generator, encoder, device, mean_latent):
             generator.eval()
 
             style = encoder(real_img)
+            print(style[:,:,:10])
             sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
             
             concat = torch.stack([real_img, sample])

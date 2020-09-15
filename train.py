@@ -32,7 +32,6 @@ from distributed import (
     get_world_size,
 )
 
-
 def data_sampler(dataset, shuffle, distributed):
     if distributed:
         return data.distributed.DistributedSampler(dataset, shuffle=shuffle)
@@ -143,7 +142,7 @@ def lpips_loss(real_img, gen_img):
     real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
     gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
     criterion = LPIPS(
-        net_type='vgg',  # choose a network type from ['alex', 'squeeze', 'vgg']
+        net_type='alex',  # choose a network type from ['alex', 'squeeze', 'vgg']
         version='0.1'  # Currently, v0.1 is supported
     ).to(device)
     return criterion(real_img, gen_img).reshape(-1).squeeze()
@@ -215,6 +214,7 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
     sample_z = torch.randn(args.n_sample, args.latent, device=device)
 
     for k, idx in enumerate(pbar):
+        encoder.train()
         i = idx + args.start_iter
 
         if i > args.iter:
