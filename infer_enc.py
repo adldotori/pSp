@@ -15,7 +15,6 @@ from distributed import (
     get_world_size,
 )
 
-
 def data_sampler(dataset, shuffle, distributed):
     if distributed:
         return data.distributed.DistributedSampler(dataset, shuffle=shuffle)
@@ -36,7 +35,7 @@ def generate(args, loader, generator, encoder, device, mean_latent):
     loader = sample_data(loader)
 
     for i in range(length):
-        real_img = next(loader)[0]
+        real_img, mask_img = next(loader)
         
         if real_img.shape[1] == 4:
             # change background at 4 channels image
@@ -48,16 +47,16 @@ def generate(args, loader, generator, encoder, device, mean_latent):
             real_img = torch.where(seg>0, real_img[:,:3,:,:], bg)
 
         real_img = real_img.to(device)
+        mask_img = mask_img.to(device)
         
         real_img = F.interpolate(real_img, size=1024, mode='bilinear')
         with torch.no_grad():
             generator.eval()
 
-            style = encoder(real_img)
-            print(style[:,:,:10])
+            style = encoder(mask_img)
             sample, _ = generator(style, truncation=args.truncation, truncation_latent=mean_latent)
             
-            concat = torch.stack([real_img, sample])
+            concat = torch.stack([mask_img, sample])
             concat = concat.view(-1,3,1024,1024)
             os.makedirs('infer', exist_ok=True)
             utils.save_image(

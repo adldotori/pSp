@@ -42,40 +42,6 @@ def data_sampler(dataset, shuffle, distributed):
     else:
         return data.SequentialSampler(dataset)
 
-def get_data_from_loader(loaders, index0, index1, data_type):
-    if data_type[0] == 0:
-        men_person_img, men_face_img, men_face_seg = next(loaders[index0])
-
-        men_cond = torch.cat([men_face_img, men_face_seg], dim=1)
-
-    elif data_type[0] == 1:
-        men_person_img, men_person_seg, men_face_img, men_face_seg = next(loaders[index0])
-
-        men_person_img = torch.cat([men_person_img, men_person_seg], dim=1)
-        men_cond = torch.cat([men_face_img, men_face_seg], dim=1)
-
-    else:
-        raise ValueError('No such data type')
-
-    if data_type[1] == 0:
-        women_person_img, women_face_img, women_face_seg = next(loaders[index1])
-
-        women_cond = torch.cat([women_face_img, women_face_seg], dim=1)
-
-    elif data_type[1] == 1:
-        women_person_img, women_person_seg, women_face_img, women_face_seg = next(loaders[index1])
-
-        women_person_img = torch.cat([women_person_img, women_person_seg], dim=1)
-        women_cond = torch.cat([women_face_img, women_face_seg], dim=1)
-        
-    else:
-        raise ValueError('No such data type')
-
-    person_img = torch.cat([men_person_img, women_person_img], dim=0)
-    cond = torch.cat([men_cond, women_cond], dim=0)
-    
-    return person_img, cond
-
 def requires_grad(model, flag=True):
     for p in model.parameters():
         p.requires_grad = flag
@@ -178,7 +144,6 @@ def set_grad_none(model, targets):
 
 def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_optim, g_ema, device):
     loader = sample_data(loader)
-    print(type(loader))
 
     pbar = range(args.iter)
 
@@ -219,14 +184,14 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
 
         if i > args.iter:
             print("Done!")
-
             break
 
-        real_img = next(loader)[0]
+        real_img, mask_img = next(loader)
         real_img = real_img.to(device)
-
+        mask_img = mask_img.to(device)
+        
         if k is 0:
-            sample_img = real_img
+            sample_img = mask_img
             utils.save_image(
                 sample_img,
                 f"sample/sample.png",
@@ -235,12 +200,11 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
                 range=(-1, 1),
             )
 
-
         requires_grad(generator, False)
         requires_grad(discriminator, False)
         requires_grad(encoder, True)
 
-        style = encoder(real_img)
+        style = encoder(mask_img)
         gen_img, _ = generator(style)
 
         l2_loss = pixel_wise_loss(real_img, gen_img)
@@ -376,10 +340,12 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
             if i % 100 == 0:
                 with torch.no_grad():
                     encoder.eval()
-                    style = encoder(sample_img)
+                    style = encoder(mask_img)
                     sample, _ = generator(style)
+                    concat = torch.stack([mask_img, sample])
+                    concat = concat.view(-1,3,1024,1024)
                     utils.save_image(
-                        sample,
+                        concat,
                         f"sample/{str(i).zfill(6)}.png",
                         nrow=int(args.batch ** 0.5),
                         normalize=True,
@@ -455,7 +421,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--path", type=str, default='/dataset/')
-    parser.add_argument("--iter", type=int, default=800000)
+    parser.add_argument("--iter", type=int, default=50000)
     parser.add_argument("--batch", type=int, default=12)
     parser.add_argument("--n_sample", type=int, default=4)
     parser.add_argument("--size", type=int, default=1024)

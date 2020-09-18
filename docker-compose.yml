@@ -9,6 +9,6 @@ services:
         dockerfile: Dockerfile
     volumes:
      - './:/app/'
-     - '/data/:/data/'
-    #  - '/home/fashionteam/lcm/stylegan2-pytorch/dataset/:/dataset/'
+     - '../images1024x1024/:/data/'
+     
 networks: {mindlogic-network: {}}

@@ -12,7 +12,7 @@ $ docker-compose up -d
 
 ## Train
 ```
-$ python -m torch.distributed.launch --nproc_per_node=4 --master_port=8800 train.py --batch 4 --ckpt config/stylegan2-kceleb-config-f.pt
+$ python -m torch.distributed.launch --nproc_per_node=4 --master_port=8800 train.py --batch 3 --ckpt config/stylegan2-ffhq-config-f.pt
 ```
 
 ## Infer
