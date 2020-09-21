@@ -201,7 +201,6 @@ if __name__ == "__main__":
     device = "cpu"
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", type=str, required=True)
     parser.add_argument("--gen", action="store_true")
     parser.add_argument("--disc", action="store_true")
     parser.add_argument("--channel_multiplier", type=int, default=2)
@@ -209,7 +208,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    sys.path.append(args.repo)
     import dnnlib
     from dnnlib import tflib
 

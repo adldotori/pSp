@@ -41,7 +41,7 @@ def generate(args, generator, encoder, device, mean_latent):
         real_img = F.interpolate(real_img, size=1024, mode='bilinear')
         seg = F.interpolate(seg, size=1024, mode='bilinear')
         seg = np.array(seg)
-        seg[seg>0] = 255
+        seg[seg>0] = 1
         seg = np.concatenate([seg, seg, seg], axis=1)
         seg = torch.tensor(seg)
         mask_img = real_img * seg
