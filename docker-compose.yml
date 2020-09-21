@@ -9,6 +9,6 @@ services:
         dockerfile: Dockerfile
     volumes:
      - './:/app/'
-     - '../images1024x1024/:/data/'
+     - '../dataset/:/data/'
      
 networks: {mindlogic-network: {}}

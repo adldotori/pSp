@@ -98,6 +98,14 @@ def g_path_regularize(fake_img, latents, mean_path_length, decay=0.01):
 
     return path_penalty, path_mean.detach(), path_lengths
 
+
+def pixel_l1_loss(real_img, gen_img):
+    gen_img[real_img==0] = real_img[real_img==0]
+    real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
+    gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
+    l1_loss = nn.L1Loss()
+    return l1_loss(real_img, gen_img)
+
 def pixel_wise_loss(real_img, gen_img):
     real_img = F.interpolate(real_img, size=256, mode='bilinear', align_corners=False)
     gen_img = F.interpolate(gen_img, size=256, mode='bilinear', align_corners=False)
@@ -207,7 +215,7 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
         style = encoder(mask_img)
         gen_img, _ = generator(style)
 
-        l2_loss = pixel_wise_loss(real_img, gen_img)
+        l2_loss = pixel_l1_loss(mask_img, gen_img) + pixel_wise_loss(real_img, gen_img)
         pc_loss = lpips_loss(real_img, gen_img)
         idt_loss = identity_loss(real_img, gen_img)
         e_loss = args.lambda_1 * l2_loss + args.lambda_2 * pc_loss + args.lambda_3 * idt_loss

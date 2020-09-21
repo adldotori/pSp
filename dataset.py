@@ -26,6 +26,7 @@ class AIDataset(Dataset):
 
         self.transform_3ch = transforms.Compose(
         [
+            transforms.RandomHorizontalFlip(p=0.5),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True),
         ])
@@ -44,9 +45,8 @@ class AIDataset(Dataset):
     def __len__(self):
         return self.length
 
-    def __getitem__(self, index):        
-        # random flip
-        # random_flip = random.randint(0, 1) # random face flip
+    def __getitem__(self, index):
+        random_flip = random.randint(0, 1) # random face flip
 
         img_path = self.image_dir_lists[index]
         file_data = Image.open(img_path)
