@@ -9,6 +9,6 @@ services:
         dockerfile: Dockerfile
     volumes:
      - './:/app/'
-     - '../dataset/:/data/'
+     - '/hdd3/taeho/dataset/:/data/'
      
 networks: {mindlogic-network: {}}

@@ -194,12 +194,15 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
             print("Done!")
             break
 
-        real_img, mask_img = next(loader)
-        real_img = real_img.to(device)
-        mask_img = mask_img.to(device)
+        trg_img, src_img = next(loader)
+        trg_img = trg_img.to(device)
+        if args.mode == 'inp':
+            src_img = src_img.to(device)
+        else:
+            src_img = trg_img
         
         if k is 0:
-            sample_img = mask_img
+            sample_img = src_img
             utils.save_image(
                 sample_img,
                 f"sample/sample.png",
@@ -212,12 +215,14 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
         requires_grad(discriminator, False)
         requires_grad(encoder, True)
 
-        style = encoder(mask_img)
+        style = encoder(src_img)
         gen_img, _ = generator(style)
 
-        l2_loss = pixel_l1_loss(mask_img, gen_img) + pixel_wise_loss(real_img, gen_img)
-        pc_loss = lpips_loss(real_img, gen_img)
-        idt_loss = identity_loss(real_img, gen_img)
+        l2_loss = pixel_wise_loss(trg_img, gen_img)
+        if args.mode == 'inp':
+            l2_loss += pixel_l1_loss(src_img, gen_img)
+        pc_loss = lpips_loss(trg_img, gen_img)
+        idt_loss = identity_loss(trg_img, gen_img)
         e_loss = args.lambda_1 * l2_loss + args.lambda_2 * pc_loss + args.lambda_3 * idt_loss
        
         encoder.zero_grad()
@@ -348,9 +353,9 @@ def train(args, loader, generator, discriminator, encoder, g_optim, d_optim, e_o
             if i % 100 == 0:
                 with torch.no_grad():
                     encoder.eval()
-                    style = encoder(mask_img)
+                    style = encoder(src_img)
                     sample, _ = generator(style)
-                    concat = torch.stack([mask_img, sample])
+                    concat = torch.stack([src_img, sample])
                     concat = concat.view(-1,3,1024,1024)
                     utils.save_image(
                         concat,
@@ -429,6 +434,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--path", type=str, default='/dataset/')
+    parser.add_argument("--mode", type=str, default='inv')
     parser.add_argument("--iter", type=int, default=50000)
     parser.add_argument("--batch", type=int, default=12)
     parser.add_argument("--n_sample", type=int, default=4)
@@ -549,14 +555,6 @@ if __name__ == "__main__":
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True),
         ]
     )
-
-    output_type_lst = [
-        'person_mat',
-        # 'person_seg',
-        # 'face',
-        # 'face_seg',
-        # 'pose'
-    ]
 
     dataset = AIDataset(
         name="base", 

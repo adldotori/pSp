@@ -19,13 +19,17 @@ $ python convert_weight.py <path to pkl file> --gen --disc
 ```
 
 ```
-$ python -m torch.distributed.launch --nproc_per_node=4 --master_port=8800 train.py --batch 3 --ckpt config/stylegan2-ffhq-config-f.pt --path /data/
+$ python -m torch.distributed.launch --nproc_per_node=4 --master_port=8800 train.py --batch 3 --ckpt config/stylegan2-ffhq-config-f.pt --path /data/ --mode <inv or inp>
 ```
+> inv = inversion, inp = inpainting
 
 ## Infer
 Add images for inference in test folder.
 ```
 $ python infer_enc.py --ckpt ...
+```
+```
+$ python infer_inp.py --ckpt ...
 ```
 
 ## Result
